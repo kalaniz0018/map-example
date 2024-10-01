@@ -4,7 +4,8 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 const MapComponent: React.FC = () => {
   const mapContainer = useRef<HTMLDivElement | null>(null);
-  const map = useRef<maplibregl.Map | null>(null);
+  //const map = useRef<maplibregl.Map | null>(null);
+  const map = useRef<any>(null);
   let hoveredPoleId: number | null = null; // Variable de estado para hover
   let hoverIds: number[] = []; // Lista de ids bajo hover
 
@@ -98,7 +99,7 @@ const MapComponent: React.FC = () => {
       };
 
       // Evento para detectar el hover
-      map.current!.on("mousemove", "pole_hover", (e) => {
+      map.current!.on("mousemove", "pole_hover", (e:any) => {
         if (e.features && e.features.length > 0) {
           const feature = e.features[0];
           const featureId = Number(feature.properties?.id_objeto); // Asegurar que el ID esté presente y sea un número
@@ -153,6 +154,160 @@ const MapComponent: React.FC = () => {
         hoveredPoleId = null;
       });
     });
+
+    /* Cambio de coords */
+    interface Feature {
+      type: string;
+      properties: Record<string, any>;
+      geometry: {
+          type: string;
+          coordinates: number[];
+      };
+  }
+    let isDragging = false;
+let draggedFeature: Feature |null= null;
+let draggedHoverFeature: Feature|null = null; 
+let ids: string = '';
+let movedFeatures: Feature[] = [];
+let movedHoverFeatures: Feature[] = []; 
+let movedHoverIds: string[] = []; 
+let coords:any = null
+let movedIds: string[] = [];
+ 
+ 
+map.current.on('contextmenu', 'pole', (e: any) => {
+  const coordinates = e.features[0].geometry.coordinates.slice();
+  const properties = e.features[0].properties;
+  ids = e.features[0].properties.id_objeto;
+
+ 
+  draggedFeature = {
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: coordinates,
+    },
+    properties: properties,
+  };
+ 
+  
+  movedFeatures.push(draggedFeature);
+  movedIds.push(properties.id_objeto);
+ 
+  draggedHoverFeature = {
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: coordinates, 
+    },
+    properties: { ...properties, id_objeto: properties.id_objeto + '_hover' }, 
+  };
+ 
+  movedHoverFeatures.push(draggedHoverFeature);
+  movedHoverIds.push(draggedHoverFeature.properties.id_objeto);
+ 
+  updateMapSourceAndLayer('temp-move-source', 'temp-move-layer', movedFeatures, '#FF0000'); // Pole original
+  updateMapSourceAndLayer('temp-move-hover-source', 'temp-move-hover-layer', movedHoverFeatures, '#FF0000');
+ 
+ 
+  isDragging = true;
+  map.current.getCanvas().style.cursor = 'move';
+});
+ 
+map.current.on('mousemove', (e: any) => {
+  if (isDragging && draggedFeature && draggedHoverFeature) {
+    const newCoordinates = [e.lngLat.lng, e.lngLat.lat];  
+
+ 
+    draggedFeature.geometry.coordinates = newCoordinates;
+    draggedHoverFeature.geometry.coordinates = newCoordinates; 
+    const movedFeature = map.current.queryRenderedFeatures({
+      layers: ['pole'], 
+    });
+    movedFeature[0].geometry.coordinates = newCoordinates
+    updateMapSourceAndLayer('temp-move-source', 'temp-move-layer', movedFeatures, '#FF0000'); 
+    map.current.removeLayer('temp-move-layer');
+    map.current.removeSource('temp-move-source');
+  }
+});
+ 
+map.current.on('mouseup', () => {
+  if (isDragging) {
+    isDragging = false;
+    map.current.getCanvas().style.cursor = '';
+/* 
+    const movedFeature = map.current.queryRenderedFeatures({
+      layers: ['pole'], 
+    });
+      const finalCoordinates = map.current.getSource('temp-move-source')._data.features[movedFeatures.length - 1].geometry.coordinates;
+      coords = { lng: finalCoordinates[0], lat: finalCoordinates[1] };
+      movedFeature[0].geometry.coordinates = finalCoordinates */     
+ 
+/* 
+      updateMapSourceAndLayer('temp-move-source', 'temp-move-layer', movedFeatures, '#FF0000'); 
+      map.current.removeLayer('temp-move-layer');
+      map.current.removeSource('temp-move-source');   */
+  /*     changeCoordsPole(ids, coords)
+        .then((res: any) => {
+          if (res.success === true) {
+            const source: any = newMap.getSource("pole");
+            console.log(source);
+           if (source) {
+              source.setTiles(source.tiles); 
+            }
+            const source2: any = newMap.getSource("pole_en_planificacion");
+            if (source2) {
+              source2.setTiles(source2.tiles); 
+            }
+ 
+            
+            newMap.removeLayer('temp-move-layer');
+            newMap.removeSource('temp-move-source');  
+          }
+        })
+        .catch((error: any) => {
+          console.error("Error updating pole feature coordinates:", error);
+        });  */
+  }
+});
+ 
+function updateMapSourceAndLayer(sourceId: string, layerId: string, features: any[], color: string) {
+  if (map.current.getSource(sourceId)) {
+    map.current.getSource(sourceId).setData({
+      type: 'FeatureCollection',
+      features: features,
+    });
+  } else {
+    map.current.addSource(sourceId, {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: features,
+      },
+    });
+    if (map.current.getLayer('pole_hover')) {
+      map.current.addLayer({
+        id: layerId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-radius': 10,
+          'circle-color': color,
+        },
+      }, 'pole_hover'); 
+    } else {
+      map.current.addLayer({
+        id: layerId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-radius': 10,
+          'circle-color': color,
+        },
+      });
+    }
+  }
+}
 
     return () => {
       if (map.current) map.current.remove();
